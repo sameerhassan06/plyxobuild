@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: designhub
+    env: docker
+    plan: free
+    repo: https://github.com/sameerhassan06/plyxobuild/
+    branch: main
+    dockerfilePath: ./Dockerfile
+    buildCommand: docker-compose build
+    startCommand: docker-compose up
