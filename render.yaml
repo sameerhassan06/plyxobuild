@@ -9,8 +9,6 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
-    buildCommand: ""
-    startCommand: "node server.js"
 
   - type: web
     name: designhub-frontend
@@ -22,8 +20,6 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
-    buildCommand: ""
-    startCommand: ""
 
   - type: web
     name: grapesjs
@@ -35,8 +31,6 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
-    buildCommand: ""
-    startCommand: "node server.js"
 
   - type: web
     name: tldraw
@@ -48,5 +42,3 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
-    buildCommand: ""
-    startCommand: "node server.js"
