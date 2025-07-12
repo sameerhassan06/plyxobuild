@@ -3,8 +3,8 @@ services:
     type: web
     env: docker
     repo: https://github.com/sameerhassan06/plyxobuild
+    dockerContext: backend
     dockerfilePath: backend/Dockerfile
-    buildContext: backend
     plan: starter
     envVars:
       - key: PORT
@@ -14,8 +14,8 @@ services:
     type: web
     env: docker
     repo: https://github.com/sameerhassan06/plyxobuild
+    dockerContext: frontend
     dockerfilePath: frontend/Dockerfile
-    buildContext: frontend
     plan: starter
     envVars:
       - key: PORT
@@ -25,8 +25,8 @@ services:
     type: web
     env: docker
     repo: https://github.com/sameerhassan06/plyxobuild
+    dockerContext: tools/grapesjs
     dockerfilePath: tools/grapesjs/Dockerfile
-    buildContext: tools/grapesjs
     plan: starter
     envVars:
       - key: PORT
@@ -36,8 +36,8 @@ services:
     type: web
     env: docker
     repo: https://github.com/sameerhassan06/plyxobuild
+    dockerContext: tools/tldraw
     dockerfilePath: tools/tldraw/Dockerfile
-    buildContext: tools/tldraw
     plan: starter
     envVars:
       - key: PORT
