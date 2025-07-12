@@ -1,44 +1,44 @@
 services:
-  - type: web
-    name: designhub-backend
+  - name: designhub-backend
+    type: web
     env: docker
-    dockerfilePath: ./backend/Dockerfile
     repo: https://github.com/sameerhassan06/plyxobuild
-    region: oregon
-    plan: free
+    dockerfilePath: backend/Dockerfile
+    buildContext: backend
+    plan: starter
     envVars:
-      - key: NODE_ENV
-        value: production
+      - key: PORT
+        value: 3001
 
-  - type: web
-    name: designhub-frontend
+  - name: designhub-frontend
+    type: web
     env: docker
-    dockerfilePath: ./frontend/Dockerfile
     repo: https://github.com/sameerhassan06/plyxobuild
-    region: oregon
-    plan: free
+    dockerfilePath: frontend/Dockerfile
+    buildContext: frontend
+    plan: starter
     envVars:
-      - key: NODE_ENV
-        value: production
+      - key: PORT
+        value: 3000
 
-  - type: web
-    name: grapesjs
+  - name: grapesjs
+    type: web
     env: docker
-    dockerfilePath: ./tools/grapesjs/Dockerfile
     repo: https://github.com/sameerhassan06/plyxobuild
-    region: oregon
-    plan: free
+    dockerfilePath: tools/grapesjs/Dockerfile
+    buildContext: tools/grapesjs
+    plan: starter
     envVars:
-      - key: NODE_ENV
-        value: production
+      - key: PORT
+        value: 3003
 
-  - type: web
-    name: tldraw
+  - name: tldraw
+    type: web
     env: docker
-    dockerfilePath: ./tools/tldraw/Dockerfile
     repo: https://github.com/sameerhassan06/plyxobuild
-    region: oregon
-    plan: free
+    dockerfilePath: tools/tldraw/Dockerfile
+    buildContext: tools/tldraw
+    plan: starter
     envVars:
-      - key: NODE_ENV
-        value: production
+      - key: PORT
+        value: 3002
