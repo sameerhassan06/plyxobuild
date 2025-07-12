@@ -1,0 +1,36 @@
+services:
+  - type: web
+    name: designhub-platform
+    env: docker
+    repo: https://github.com/sameerhassan06/plyxobuild
+    branch: main
+    region: oregon
+    plan: free
+    dockerContext: .
+    dockerfilePath: ./Dockerfile  # Can be any one Dockerfile or leave this if using dockerComposeFilePath
+    dockerComposeFilePath: ./docker-compose.yml
+    buildCommand: docker-compose build
+    startCommand: docker-compose up
+    healthCheckPath: /
+    autoDeploy: true
+    envVars:
+      - key: POSTGRES_DB
+        value: designhub
+      - key: POSTGRES_USER
+        value: designhub_user
+      - key: POSTGRES_PASSWORD
+        value: your_secure_password_here
+      - key: REDIS_URL
+        value: redis://redis:6379
+      - key: JWT_SECRET
+        value: your_jwt_secret_here_change_this
+      - key: SESSION_SECRET
+        value: your_session_secret_here_change_this
+      - key: CLIENT_URL
+        value: http://localhost:3000
+      - key: API_URL
+        value: http://localhost:3001
+      - key: MINIO_ROOT_USER
+        value: minioadmin
+      - key: MINIO_ROOT_PASSWORD
+        value: minioadmin
