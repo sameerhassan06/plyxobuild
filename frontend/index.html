@@ -1,0 +1,920 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DesignHub Pro - Complete Design Platform</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://unpkg.com/axios/dist/axios.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        
+        * {
+            font-family: 'Inter', sans-serif;
+        }
+        
+        .glassmorphism {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .gradient-border {
+            position: relative;
+            background: linear-gradient(to right, #6366f1, #8b5cf6, #ec4899);
+            padding: 1px;
+            border-radius: 0.5rem;
+        }
+        
+        .gradient-text {
+            background: linear-gradient(to right, #6366f1, #8b5cf6, #ec4899);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        
+        .sidebar-item {
+            transition: all 0.3s ease;
+        }
+        
+        .sidebar-item:hover {
+            transform: translateX(4px);
+        }
+        
+        .project-card {
+            transition: all 0.3s ease;
+            border: 1px solid transparent;
+        }
+        
+        .project-card:hover {
+            transform: translateY(-4px);
+            border-color: rgba(99, 102, 241, 0.3);
+            box-shadow: 0 10px 40px rgba(99, 102, 241, 0.1);
+        }
+        
+        .tool-card {
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .tool-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.1), transparent);
+            transition: left 0.5s;
+        }
+        
+        .tool-card:hover::before {
+            left: 100%;
+        }
+        
+        .tool-card:hover {
+            transform: scale(1.02);
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
+        }
+        
+        .loading-spinner {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            border-top-color: #6366f1;
+            animation: spin 1s ease-in-out infinite;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        .fade-in {
+            animation: fadeIn 0.5s ease-in;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+    </style>
+</head>
+<body class="bg-gray-950 text-white">
+    <!-- Login Screen (shown when not authenticated) -->
+    <div id="loginScreen" class="min-h-screen flex items-center justify-center p-4">
+        <div class="glassmorphism p-8 rounded-2xl max-w-md w-full">
+            <h1 class="text-3xl font-bold text-center mb-2 gradient-text">DesignHub Pro</h1>
+            <p class="text-center text-gray-400 mb-8">All-in-one Design Platform</p>
+            
+            <!-- Login Form -->
+            <form id="loginForm" class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium mb-2">Email</label>
+                    <input type="email" id="loginEmail" required 
+                           class="w-full px-4 py-3 rounded-lg bg-gray-800 border border-gray-700 focus:border-indigo-500 focus:outline-none">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium mb-2">Password</label>
+                    <input type="password" id="loginPassword" required 
+                           class="w-full px-4 py-3 rounded-lg bg-gray-800 border border-gray-700 focus:border-indigo-500 focus:outline-none">
+                </div>
+                <button type="submit" class="w-full bg-indigo-600 hover:bg-indigo-700 py-3 rounded-lg font-medium transition-all">
+                    Sign In
+                </button>
+            </form>
+            
+            <!-- Register Form (hidden by default) -->
+            <form id="registerForm" class="space-y-4 hidden">
+                <div>
+                    <label class="block text-sm font-medium mb-2">Name</label>
+                    <input type="text" id="registerName" required 
+                           class="w-full px-4 py-3 rounded-lg bg-gray-800 border border-gray-700 focus:border-indigo-500 focus:outline-none">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium mb-2">Email</label>
+                    <input type="email" id="registerEmail" required 
+                           class="w-full px-4 py-3 rounded-lg bg-gray-800 border border-gray-700 focus:border-indigo-500 focus:outline-none">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium mb-2">Password</label>
+                    <input type="password" id="registerPassword" required 
+                           class="w-full px-4 py-3 rounded-lg bg-gray-800 border border-gray-700 focus:border-indigo-500 focus:outline-none">
+                </div>
+                <button type="submit" class="w-full bg-indigo-600 hover:bg-indigo-700 py-3 rounded-lg font-medium transition-all">
+                    Create Account
+                </button>
+            </form>
+            
+            <div class="mt-6 text-center">
+                <button id="toggleAuth" class="text-indigo-400 hover:text-indigo-300">
+                    Don't have an account? Sign up
+                </button>
+            </div>
+            
+            <div id="authError" class="mt-4 p-3 bg-red-500/20 border border-red-500/50 rounded-lg text-red-400 text-sm hidden"></div>
+        </div>
+    </div>
+
+    <!-- Main Dashboard (hidden when not authenticated) -->
+    <div id="mainDashboard" class="flex h-screen overflow-hidden hidden">
+        <!-- Sidebar -->
+        <aside id="sidebar" class="w-64 bg-gray-900 border-r border-gray-800 flex flex-col">
+            <!-- Logo -->
+            <div class="p-6 border-b border-gray-800">
+                <h1 class="text-2xl font-bold gradient-text">DesignHub Pro</h1>
+                <p class="text-xs text-gray-400 mt-1">All-in-one Design Platform</p>
+            </div>
+            
+            <!-- Navigation -->
+            <nav class="flex-1 overflow-y-auto p-4">
+                <div class="space-y-1">
+                    <a href="#" onclick="showSection('dashboard')" class="sidebar-item sidebar-active flex items-center gap-3 px-4 py-3 rounded-lg bg-gray-800 text-white">
+                        <i data-lucide="layout-dashboard" class="w-5 h-5"></i>
+                        <span>Dashboard</span>
+                    </a>
+                    <a href="#" onclick="showSection('projects')" class="sidebar-item flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-gray-800 text-gray-400 hover:text-white">
+                        <i data-lucide="folder" class="w-5 h-5"></i>
+                        <span>Projects</span>
+                    </a>
+                    <a href="#" onclick="showSection('team')" class="sidebar-item flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-gray-800 text-gray-400 hover:text-white">
+                        <i data-lucide="users" class="w-5 h-5"></i>
+                        <span>Team</span>
+                    </a>
+                    <a href="#" onclick="showSection('settings')" class="sidebar-item flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-gray-800 text-gray-400 hover:text-white">
+                        <i data-lucide="settings" class="w-5 h-5"></i>
+                        <span>Settings</span>
+                    </a>
+                </div>
+            </nav>
+            
+            <!-- User Profile -->
+            <div class="p-4 border-t border-gray-800">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-full bg-gradient-to-r from-indigo-500 to-purple-500 flex items-center justify-center">
+                        <span id="userInitials" class="text-sm font-semibold">--</span>
+                    </div>
+                    <div class="flex-1">
+                        <p id="userName" class="text-sm font-medium">Loading...</p>
+                        <p class="text-xs text-gray-400">Free Plan</p>
+                    </div>
+                    <button onclick="logout()" class="text-gray-400 hover:text-white">
+                        <i data-lucide="log-out" class="w-5 h-5"></i>
+                    </button>
+                </div>
+            </div>
+        </aside>
+        
+        <!-- Main Content -->
+        <main class="flex-1 overflow-y-auto">
+            <!-- Header -->
+            <header class="glassmorphism border-b border-gray-800 px-6 py-4">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <h2 id="pageTitle" class="text-2xl font-semibold">Dashboard</h2>
+                        <p id="pageSubtitle" class="text-sm text-gray-400 mt-1">Welcome back! Here's your overview.</p>
+                    </div>
+                    <div class="flex items-center gap-4">
+                        <button onclick="showCreateProjectModal()" class="gradient-border">
+                            <div class="bg-gray-900 px-4 py-2 rounded-[7px] flex items-center gap-2 hover:bg-gray-800 transition-all">
+                                <i data-lucide="plus" class="w-5 h-5"></i>
+                                <span>New Project</span>
+                            </div>
+                        </button>
+                    </div>
+                </div>
+            </header>
+            
+            <!-- Content Sections -->
+            <div class="p-6">
+                <!-- Dashboard Section -->
+                <section id="dashboard" class="fade-in">
+                    <!-- Stats Cards -->
+                    <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+                        <div class="glassmorphism p-6 rounded-xl">
+                            <div class="flex items-center justify-between mb-4">
+                                <div class="w-12 h-12 bg-indigo-500/20 rounded-lg flex items-center justify-center">
+                                    <i data-lucide="folder" class="w-6 h-6 text-indigo-500"></i>
+                                </div>
+                            </div>
+                            <h3 id="projectCount" class="text-2xl font-bold">0</h3>
+                            <p class="text-sm text-gray-400">Active Projects</p>
+                        </div>
+                        
+                        <div class="glassmorphism p-6 rounded-xl">
+                            <div class="flex items-center justify-between mb-4">
+                                <div class="w-12 h-12 bg-purple-500/20 rounded-lg flex items-center justify-center">
+                                    <i data-lucide="users" class="w-6 h-6 text-purple-500"></i>
+                                </div>
+                            </div>
+                            <h3 class="text-2xl font-bold">1</h3>
+                            <p class="text-sm text-gray-400">Team Members</p>
+                        </div>
+                        
+                        <div class="glassmorphism p-6 rounded-xl">
+                            <div class="flex items-center justify-between mb-4">
+                                <div class="w-12 h-12 bg-pink-500/20 rounded-lg flex items-center justify-center">
+                                    <i data-lucide="download" class="w-6 h-6 text-pink-500"></i>
+                                </div>
+                            </div>
+                            <h3 class="text-2xl font-bold">0</h3>
+                            <p class="text-sm text-gray-400">Exports This Month</p>
+                        </div>
+                        
+                        <div class="glassmorphism p-6 rounded-xl">
+                            <div class="flex items-center justify-between mb-4">
+                                <div class="w-12 h-12 bg-green-500/20 rounded-lg flex items-center justify-center">
+                                    <i data-lucide="hard-drive" class="w-6 h-6 text-green-500"></i>
+                                </div>
+                            </div>
+                            <h3 class="text-2xl font-bold">0%</h3>
+                            <p class="text-sm text-gray-400">Storage Used</p>
+                        </div>
+                    </div>
+                    
+                    <!-- Recent Projects -->
+                    <div class="mb-8">
+                        <h3 class="text-xl font-semibold mb-4">Recent Projects</h3>
+                        <div id="recentProjects" class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                            <div class="glassmorphism p-6 rounded-xl text-center text-gray-400">
+                                <i data-lucide="folder-plus" class="w-12 h-12 mx-auto mb-3 opacity-50"></i>
+                                <p>No projects yet</p>
+                                <button onclick="showCreateProjectModal()" class="mt-3 text-indigo-400 hover:text-indigo-300">
+                                    Create your first project
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Quick Actions -->
+                    <div>
+                        <h3 class="text-xl font-semibold mb-4">Quick Actions</h3>
+                        <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                            <button onclick="launchTool('prototyper')" class="tool-card glassmorphism p-6 rounded-xl text-left hover:bg-gray-800/50 transition-all">
+                                <i data-lucide="pen-tool" class="w-8 h-8 text-indigo-500 mb-3"></i>
+                                <h4 class="font-medium">Design Prototyper</h4>
+                                <p class="text-xs text-gray-400 mt-1">Penpot Integration</p>
+                            </button>
+                            
+                            <button onclick="launchTool('whiteboard')" class="tool-card glassmorphism p-6 rounded-xl text-left hover:bg-gray-800/50 transition-all">
+                                <i data-lucide="square-pen" class="w-8 h-8 text-purple-500 mb-3"></i>
+                                <h4 class="font-medium">Whiteboard</h4>
+                                <p class="text-xs text-gray-400 mt-1">TLDraw Powered</p>
+                            </button>
+                            
+                            <button onclick="launchTool('wordpress')" class="tool-card glassmorphism p-6 rounded-xl text-left hover:bg-gray-800/50 transition-all">
+                                <i data-lucide="globe" class="w-8 h-8 text-pink-500 mb-3"></i>
+                                <h4 class="font-medium">WP Generator</h4>
+                                <p class="text-xs text-gray-400 mt-1">Export to WordPress</p>
+                            </button>
+                            
+                            <button onclick="launchTool('sitebuilder')" class="tool-card glassmorphism p-6 rounded-xl text-left hover:bg-gray-800/50 transition-all">
+                                <i data-lucide="layout" class="w-8 h-8 text-green-500 mb-3"></i>
+                                <h4 class="font-medium">Site Builder</h4>
+                                <p class="text-xs text-gray-400 mt-1">GrapesJS Based</p>
+                            </button>
+                        </div>
+                    </div>
+                </section>
+                
+                <!-- Projects Section -->
+                <section id="projects" class="fade-in hidden">
+                    <div class="flex items-center justify-between mb-6">
+                        <h3 class="text-xl font-semibold">All Projects</h3>
+                        <div class="flex items-center gap-2">
+                            <input type="search" placeholder="Search projects..." 
+                                   class="glassmorphism px-4 py-2 rounded-lg bg-transparent focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                        </div>
+                    </div>
+                    
+                    <div id="projectsList" class="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-6">
+                        <!-- Projects will be loaded here -->
+                    </div>
+                </section>
+                
+                <!-- Team Section -->
+                <section id="team" class="fade-in hidden">
+                    <div class="glassmorphism p-6 rounded-xl">
+                        <h3 class="text-xl font-semibold mb-4">Team Members</h3>
+                        <p class="text-gray-400">Team collaboration features coming soon!</p>
+                    </div>
+                </section>
+                
+                <!-- Settings Section -->
+                <section id="settings" class="fade-in hidden">
+                    <div class="glassmorphism p-6 rounded-xl">
+                        <h3 class="text-xl font-semibold mb-4">Account Settings</h3>
+                        <div class="space-y-4">
+                            <div>
+                                <label class="block text-sm font-medium mb-2">Name</label>
+                                <input type="text" id="settingsName" class="w-full md:w-1/2 px-4 py-2 rounded-lg bg-gray-800 border border-gray-700">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium mb-2">Email</label>
+                                <input type="email" id="settingsEmail" class="w-full md:w-1/2 px-4 py-2 rounded-lg bg-gray-800 border border-gray-700" disabled>
+                            </div>
+                            <button onclick="updateSettings()" class="bg-indigo-600 hover:bg-indigo-700 px-6 py-2 rounded-lg">
+                                Save Changes
+                            </button>
+                        </div>
+                    </div>
+                </section>
+            </div>
+        </main>
+    </div>
+    
+    <!-- Create Project Modal -->
+    <div id="createProjectModal" class="fixed inset-0 bg-black/50 backdrop-blur-sm hidden items-center justify-center z-50">
+        <div class="glassmorphism bg-gray-900 p-8 rounded-2xl max-w-2xl w-full mx-4">
+            <h2 class="text-2xl font-bold mb-6">Create New Project</h2>
+            
+            <form id="createProjectForm" class="space-y-6">
+                <div>
+                    <label class="block text-sm font-medium mb-2">Project Name</label>
+                    <input type="text" id="projectName" required placeholder="Enter project name..." 
+                           class="w-full glassmorphism px-4 py-3 rounded-lg bg-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                </div>
+                
+                <div>
+                    <label class="block text-sm font-medium mb-2">Choose Tools</label>
+                    <div class="grid grid-cols-2 gap-4">
+                        <label class="tool-select glassmorphism p-4 rounded-lg cursor-pointer hover:bg-gray-800 transition-all">
+                            <input type="checkbox" name="tools" value="prototyper" class="sr-only" checked>
+                            <div class="flex items-center gap-3">
+                                <div class="w-10 h-10 bg-indigo-500/20 rounded-lg flex items-center justify-center">
+                                    <i data-lucide="pen-tool" class="w-5 h-5 text-indigo-500"></i>
+                                </div>
+                                <div>
+                                    <h4 class="font-medium">Design Prototyper</h4>
+                                    <p class="text-xs text-gray-400">Penpot-based design tool</p>
+                                </div>
+                            </div>
+                        </label>
+                        
+                        <label class="tool-select glassmorphism p-4 rounded-lg cursor-pointer hover:bg-gray-800 transition-all">
+                            <input type="checkbox" name="tools" value="whiteboard" class="sr-only">
+                            <div class="flex items-center gap-3">
+                                <div class="w-10 h-10 bg-purple-500/20 rounded-lg flex items-center justify-center">
+                                    <i data-lucide="square-pen" class="w-5 h-5 text-purple-500"></i>
+                                </div>
+                                <div>
+                                    <h4 class="font-medium">Whiteboard</h4>
+                                    <p class="text-xs text-gray-400">Collaborative whiteboard</p>
+                                </div>
+                            </div>
+                        </label>
+                        
+                        <label class="tool-select glassmorphism p-4 rounded-lg cursor-pointer hover:bg-gray-800 transition-all">
+                            <input type="checkbox" name="tools" value="wordpress" class="sr-only">
+                            <div class="flex items-center gap-3">
+                                <div class="w-10 h-10 bg-pink-500/20 rounded-lg flex items-center justify-center">
+                                    <i data-lucide="globe" class="w-5 h-5 text-pink-500"></i>
+                                </div>
+                                <div>
+                                    <h4 class="font-medium">WordPress Export</h4>
+                                    <p class="text-xs text-gray-400">Generate WP themes</p>
+                                </div>
+                            </div>
+                        </label>
+                        
+                        <label class="tool-select glassmorphism p-4 rounded-lg cursor-pointer hover:bg-gray-800 transition-all">
+                            <input type="checkbox" name="tools" value="sitebuilder" class="sr-only">
+                            <div class="flex items-center gap-3">
+                                <div class="w-10 h-10 bg-green-500/20 rounded-lg flex items-center justify-center">
+                                    <i data-lucide="layout" class="w-5 h-5 text-green-500"></i>
+                                </div>
+                                <div>
+                                    <h4 class="font-medium">Site Builder</h4>
+                                    <p class="text-xs text-gray-400">Visual site builder</p>
+                                </div>
+                            </div>
+                        </label>
+                    </div>
+                </div>
+                
+                <div class="flex gap-4">
+                    <button type="submit" class="flex-1 bg-indigo-600 hover:bg-indigo-700 py-3 rounded-lg font-medium transition-all">
+                        Create Project
+                    </button>
+                    <button type="button" onclick="closeModal('createProjectModal')" class="flex-1 glassmorphism hover:bg-gray-800 py-3 rounded-lg font-medium transition-all">
+                        Cancel
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+    
+    <!-- Tool Launcher Modal -->
+    <div id="toolLauncher" class="fixed inset-0 bg-gray-950 hidden z-50">
+        <div class="h-full flex flex-col">
+            <!-- Tool Header -->
+            <div class="glassmorphism border-b border-gray-800 px-6 py-4 flex items-center justify-between">
+                <div class="flex items-center gap-4">
+                    <button onclick="closeTool()" class="glassmorphism p-2 rounded-lg hover:bg-gray-800 transition-all">
+                        <i data-lucide="arrow-left" class="w-5 h-5"></i>
+                    </button>
+                    <h2 id="toolTitle" class="text-xl font-semibold">Tool Name</h2>
+                </div>
+                <div class="flex items-center gap-2">
+                    <button class="glassmorphism px-4 py-2 rounded-lg hover:bg-gray-800 transition-all">
+                        <i data-lucide="save" class="w-5 h-5"></i>
+                    </button>
+                    <button class="glassmorphism px-4 py-2 rounded-lg hover:bg-gray-800 transition-all">
+                        <i data-lucide="share-2" class="w-5 h-5"></i>
+                    </button>
+                </div>
+            </div>
+            
+            <!-- Tool Container -->
+            <div id="toolContainer" class="flex-1 bg-gray-900">
+                <!-- Tools will be loaded here dynamically -->
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // Initialize Lucide icons
+        lucide.createIcons();
+        
+        // API Configuration
+        const API_URL = 'http://localhost:3001/api';
+        let authToken = localStorage.getItem('authToken');
+        let currentUser = null;
+        let projects = [];
+        
+        // Axios default configuration
+        if (authToken) {
+            axios.defaults.headers.common['Authorization'] = `Bearer ${authToken}`;
+        }
+        
+        // Authentication
+        async function checkAuth() {
+            if (!authToken) {
+                showLogin();
+                return;
+            }
+            
+            try {
+                // Verify token by getting user info
+                const response = await axios.get(`${API_URL}/auth/me`).catch(() => null);
+                if (response && response.data) {
+                    currentUser = response.data;
+                    showDashboard();
+                } else {
+                    showLogin();
+                }
+            } catch (error) {
+                showLogin();
+            }
+        }
+        
+        function showLogin() {
+            document.getElementById('loginScreen').classList.remove('hidden');
+            document.getElementById('mainDashboard').classList.add('hidden');
+        }
+        
+        function showDashboard() {
+            document.getElementById('loginScreen').classList.add('hidden');
+            document.getElementById('mainDashboard').classList.remove('hidden');
+            
+            // Update user info
+            if (currentUser) {
+                document.getElementById('userName').textContent = currentUser.name;
+                document.getElementById('userInitials').textContent = currentUser.name.split(' ').map(n => n[0]).join('').toUpperCase();
+                document.getElementById('settingsName').value = currentUser.name;
+                document.getElementById('settingsEmail').value = currentUser.email;
+            }
+            
+            // Load projects
+            loadProjects();
+            
+            // Reinitialize icons
+            setTimeout(() => lucide.createIcons(), 100);
+        }
+        
+        // Login form handler
+        document.getElementById('loginForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const email = document.getElementById('loginEmail').value;
+            const password = document.getElementById('loginPassword').value;
+            
+            try {
+                const response = await axios.post(`${API_URL}/auth/login`, { email, password });
+                authToken = response.data.token;
+                currentUser = response.data.user;
+                
+                // Save token
+                localStorage.setItem('authToken', authToken);
+                axios.defaults.headers.common['Authorization'] = `Bearer ${authToken}`;
+                
+                showDashboard();
+            } catch (error) {
+                showError(error.response?.data?.error || 'Login failed');
+            }
+        });
+        
+        // Register form handler
+        document.getElementById('registerForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const name = document.getElementById('registerName').value;
+            const email = document.getElementById('registerEmail').value;
+            const password = document.getElementById('registerPassword').value;
+            
+            try {
+                const response = await axios.post(`${API_URL}/auth/register`, { name, email, password });
+                authToken = response.data.token;
+                currentUser = response.data.user;
+                
+                // Save token
+                localStorage.setItem('authToken', authToken);
+                axios.defaults.headers.common['Authorization'] = `Bearer ${authToken}`;
+                
+                showDashboard();
+            } catch (error) {
+                showError(error.response?.data?.error || 'Registration failed');
+            }
+        });
+        
+        // Toggle between login and register
+        document.getElementById('toggleAuth').addEventListener('click', () => {
+            const loginForm = document.getElementById('loginForm');
+            const registerForm = document.getElementById('registerForm');
+            const toggleBtn = document.getElementById('toggleAuth');
+            
+            if (loginForm.classList.contains('hidden')) {
+                loginForm.classList.remove('hidden');
+                registerForm.classList.add('hidden');
+                toggleBtn.textContent = "Don't have an account? Sign up";
+            } else {
+                loginForm.classList.add('hidden');
+                registerForm.classList.remove('hidden');
+                toggleBtn.textContent = "Already have an account? Sign in";
+            }
+        });
+        
+        // Show error message
+        function showError(message) {
+            const errorDiv = document.getElementById('authError');
+            errorDiv.textContent = message;
+            errorDiv.classList.remove('hidden');
+            setTimeout(() => errorDiv.classList.add('hidden'), 5000);
+        }
+        
+        // Logout
+        function logout() {
+            localStorage.removeItem('authToken');
+            authToken = null;
+            currentUser = null;
+            delete axios.defaults.headers.common['Authorization'];
+            showLogin();
+        }
+        
+        // Section management
+        function showSection(sectionId) {
+            // Hide all sections
+            document.querySelectorAll('section').forEach(section => {
+                section.classList.add('hidden');
+            });
+            
+            // Show selected section
+            const section = document.getElementById(sectionId);
+            if (section) {
+                section.classList.remove('hidden');
+            }
+            
+            // Update sidebar active state
+            document.querySelectorAll('.sidebar-item').forEach(item => {
+                item.classList.remove('bg-gray-800', 'text-white', 'sidebar-active');
+                item.classList.add('text-gray-400');
+            });
+            
+            // Set active item
+            event.target.closest('.sidebar-item').classList.add('bg-gray-800', 'text-white', 'sidebar-active');
+            event.target.closest('.sidebar-item').classList.remove('text-gray-400');
+            
+            // Update page title
+            const titles = {
+                dashboard: { title: 'Dashboard', subtitle: 'Welcome back! Here\'s your overview.' },
+                projects: { title: 'Projects', subtitle: 'Manage all your design projects in one place.' },
+                team: { title: 'Team', subtitle: 'Collaborate with your team members.' },
+                settings: { title: 'Settings', subtitle: 'Configure your account preferences.' }
+            };
+            
+            const pageInfo = titles[sectionId] || { title: 'Page', subtitle: '' };
+            document.getElementById('pageTitle').textContent = pageInfo.title;
+            document.getElementById('pageSubtitle').textContent = pageInfo.subtitle;
+            
+            // Reinitialize icons
+            setTimeout(() => lucide.createIcons(), 100);
+        }
+        
+        // Project management
+        async function loadProjects() {
+            try {
+                const response = await axios.get(`${API_URL}/projects`);
+                projects = response.data || [];
+                
+                // Update project count
+                document.getElementById('projectCount').textContent = projects.length;
+                
+                // Update recent projects
+                updateRecentProjects();
+                
+                // Update projects list
+                updateProjectsList();
+            } catch (error) {
+                console.error('Failed to load projects:', error);
+            }
+        }
+        
+        function updateRecentProjects() {
+            const container = document.getElementById('recentProjects');
+            
+            if (projects.length === 0) {
+                container.innerHTML = `
+                    <div class="glassmorphism p-6 rounded-xl text-center text-gray-400">
+                        <i data-lucide="folder-plus" class="w-12 h-12 mx-auto mb-3 opacity-50"></i>
+                        <p>No projects yet</p>
+                        <button onclick="showCreateProjectModal()" class="mt-3 text-indigo-400 hover:text-indigo-300">
+                            Create your first project
+                        </button>
+                    </div>
+                `;
+            } else {
+                const recentProjects = projects.slice(0, 3);
+                container.innerHTML = recentProjects.map(project => `
+                    <div class="project-card glassmorphism p-6 rounded-xl cursor-pointer" onclick="openProject('${project.id}')">
+                        <div class="aspect-video bg-gradient-to-br from-indigo-500 to-purple-500 rounded-lg mb-4"></div>
+                        <h4 class="font-semibold mb-2">${project.name}</h4>
+                        <p class="text-sm text-gray-400 mb-4">Updated ${formatDate(project.updated_at)}</p>
+                        <div class="flex items-center gap-2 flex-wrap">
+                            ${(project.tools || []).map(tool => `
+                                <span class="text-xs bg-indigo-500/20 text-indigo-400 px-2 py-1 rounded">${tool}</span>
+                            `).join('')}
+                        </div>
+                    </div>
+                `).join('');
+            }
+            
+            setTimeout(() => lucide.createIcons(), 100);
+        }
+        
+        function updateProjectsList() {
+            const container = document.getElementById('projectsList');
+            
+            if (projects.length === 0) {
+                container.innerHTML = `
+                    <div class="col-span-full text-center text-gray-400 py-12">
+                        <i data-lucide="folder-plus" class="w-16 h-16 mx-auto mb-4 opacity-50"></i>
+                        <p class="mb-4">No projects found</p>
+                        <button onclick="showCreateProjectModal()" class="text-indigo-400 hover:text-indigo-300">
+                            Create a new project
+                        </button>
+                    </div>
+                `;
+            } else {
+                container.innerHTML = projects.map(project => `
+                    <div class="project-card glassmorphism p-6 rounded-xl cursor-pointer" onclick="openProject('${project.id}')">
+                        <div class="aspect-video bg-gradient-to-br from-indigo-500 to-purple-500 rounded-lg mb-4"></div>
+                        <h4 class="font-semibold mb-2">${project.name}</h4>
+                        <p class="text-sm text-gray-400">Updated ${formatDate(project.updated_at)}</p>
+                    </div>
+                `).join('');
+            }
+            
+            setTimeout(() => lucide.createIcons(), 100);
+        }
+        
+        // Create project
+        function showCreateProjectModal() {
+            document.getElementById('createProjectModal').classList.remove('hidden');
+            document.getElementById('createProjectModal').classList.add('flex');
+        }
+        
+        function closeModal(modalId) {
+            document.getElementById(modalId).classList.add('hidden');
+            document.getElementById(modalId).classList.remove('flex');
+        }
+        
+        document.getElementById('createProjectForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const name = document.getElementById('projectName').value;
+            const selectedTools = Array.from(document.querySelectorAll('input[name="tools"]:checked')).map(cb => cb.value);
+            
+            try {
+                const response = await axios.post(`${API_URL}/projects`, {
+                    name,
+                    tools: selectedTools
+                });
+                
+                projects.unshift(response.data);
+                updateRecentProjects();
+                updateProjectsList();
+                
+                closeModal('createProjectModal');
+                document.getElementById('createProjectForm').reset();
+                
+                // Show success message
+                showNotification('Project created successfully!', 'success');
+            } catch (error) {
+                showNotification(error.response?.data?.error || 'Failed to create project', 'error');
+            }
+        });
+        
+        // Open project
+        async function openProject(projectId) {
+            const project = projects.find(p => p.id === projectId);
+            if (!project) return;
+            
+            // Default to prototyper tool
+            launchTool('prototyper', projectId);
+        }
+        
+        // Tool launcher
+        async function launchTool(toolType, projectId = null) {
+            const toolConfig = {
+                prototyper: {
+                    title: 'Design Prototyper (Penpot)',
+                    url: 'http://localhost:9001'
+                },
+                whiteboard: {
+                    title: 'Collaborative Whiteboard (TLDraw)',
+                    url: 'http://localhost:3002'
+                },
+                wordpress: {
+                    title: 'WordPress Theme Generator',
+                    content: `
+                        <div class="p-8">
+                            <h3 class="text-2xl font-semibold mb-4">WordPress Export</h3>
+                            <p class="text-gray-400 mb-6">Convert your designs into a fully functional WordPress theme.</p>
+                            <button class="bg-indigo-600 hover:bg-indigo-700 px-6 py-3 rounded-lg">
+                                Generate WordPress Theme
+                            </button>
+                        </div>
+                    `
+                },
+                sitebuilder: {
+                    title: 'Visual Site Builder (GrapesJS)',
+                    url: 'http://localhost:3003'
+                }
+            };
+            
+            const config = toolConfig[toolType];
+            if (!config) return;
+            
+            document.getElementById('toolTitle').textContent = config.title;
+            
+            if (config.url) {
+                // If we need SSO token, request it first
+                if (projectId) {
+                    try {
+                        const response = await axios.post(`${API_URL}/tools/launch`, {
+                            toolName: toolType,
+                            projectId: projectId
+                        });
+                        
+                        // Use the SSO URL if provided
+                        if (response.data.embedUrl) {
+                            document.getElementById('toolContainer').innerHTML = `<iframe src="${response.data.embedUrl}" class="w-full h-full border-0"></iframe>`;
+                        } else {
+                            document.getElementById('toolContainer').innerHTML = `<iframe src="${config.url}" class="w-full h-full border-0"></iframe>`;
+                        }
+                    } catch (error) {
+                        console.error('Failed to launch tool:', error);
+                        document.getElementById('toolContainer').innerHTML = `<iframe src="${config.url}" class="w-full h-full border-0"></iframe>`;
+                    }
+                } else {
+                    document.getElementById('toolContainer').innerHTML = `<iframe src="${config.url}" class="w-full h-full border-0"></iframe>`;
+                }
+            } else {
+                document.getElementById('toolContainer').innerHTML = config.content;
+            }
+            
+            document.getElementById('toolLauncher').classList.remove('hidden');
+            setTimeout(() => lucide.createIcons(), 100);
+        }
+        
+        function closeTool() {
+            document.getElementById('toolLauncher').classList.add('hidden');
+            document.getElementById('toolContainer').innerHTML = '';
+        }
+        
+        // Settings
+        async function updateSettings() {
+            const name = document.getElementById('settingsName').value;
+            
+            try {
+                const response = await axios.put(`${API_URL}/auth/profile`, { name });
+                currentUser = response.data;
+                
+                // Update UI
+                document.getElementById('userName').textContent = currentUser.name;
+                document.getElementById('userInitials').textContent = currentUser.name.split(' ').map(n => n[0]).join('').toUpperCase();
+                
+                showNotification('Settings updated successfully!', 'success');
+            } catch (error) {
+                showNotification(error.response?.data?.error || 'Failed to update settings', 'error');
+            }
+        }
+        
+        // Utility functions
+        function formatDate(dateString) {
+            const date = new Date(dateString);
+            const now = new Date();
+            const diff = now - date;
+            
+            if (diff < 60000) return 'just now';
+            if (diff < 3600000) return `${Math.floor(diff / 60000)} minutes ago`;
+            if (diff < 86400000) return `${Math.floor(diff / 3600000)} hours ago`;
+            if (diff < 604800000) return `${Math.floor(diff / 86400000)} days ago`;
+            
+            return date.toLocaleDateString();
+        }
+        
+        function showNotification(message, type = 'info') {
+            // Create notification element
+            const notification = document.createElement('div');
+            notification.className = `fixed bottom-4 right-4 p-4 rounded-lg ${
+                type === 'success' ? 'bg-green-500' : 
+                type === 'error' ? 'bg-red-500' : 
+                'bg-indigo-500'
+            } text-white z-50 fade-in`;
+            notification.textContent = message;
+            
+            document.body.appendChild(notification);
+            
+            setTimeout(() => {
+                notification.remove();
+            }, 3000);
+        }
+        
+        // Tool selection styling
+        document.querySelectorAll('.tool-select input[type="checkbox"]').forEach(checkbox => {
+            checkbox.addEventListener('change', function() {
+                const parent = this.closest('.tool-select');
+                if (this.checked) {
+                    parent.classList.add('ring-2', 'ring-indigo-500');
+                } else {
+                    parent.classList.remove('ring-2', 'ring-indigo-500');
+                }
+            });
+        });
+        
+        // Initialize on load
+        document.addEventListener('DOMContentLoaded', () => {
+            checkAuth();
+        });
+        
+        // Handle browser back button
+        window.addEventListener('popstate', () => {
+            if (document.getElementById('toolLauncher').classList.contains('hidden') === false) {
+                closeTool();
+            }
+        });
+    </script>
+</body>
+</html>

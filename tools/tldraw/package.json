@@ -1,0 +1,16 @@
+{
+  "name": "tldraw-integration",
+  "version": "1.0.0",
+  "description": "TLDraw integration for DesignHub",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "nodemon server.js"
+  },
+  "dependencies": {
+    "@tldraw/tldraw": "^2.0.0",
+    "express": "^4.18.2",
+    "socket.io": "^4.6.1",
+    "jsonwebtoken": "^9.0.0"
+  }
+}

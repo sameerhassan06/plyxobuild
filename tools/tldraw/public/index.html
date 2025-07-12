@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DesignHub - Whiteboard</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        }
+        #app {
+            width: 100vw;
+            height: 100vh;
+        }
+        .loading {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            background: #1a1a1a;
+            color: white;
+        }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <div class="loading">Loading whiteboard...</div>
+    </div>
+    
+    <script type="module">
+        import { Tldraw, getSnapshot, loadSnapshot } from '@tldraw/tldraw';
+        import '@tldraw/tldraw/tldraw.css';
+        import { io } from 'socket.io-client';
+        
+        // Get room ID and token from URL
+        const params = new URLSearchParams(window.location.search);
+        const roomId = params.get('room');
+        const token = params.get('token') || getCookie('tldraw_session');
+        
+        // Connect to WebSocket
+        const socket = io('/', {
+            auth: { token }
+        });
+        
+        // Initialize TLDraw
+        let editor;
+        
+        const app = document.getElementById('app');
+        app.innerHTML = '';
+        
+        const tldrawElement = document.createElement('div');
+        tldrawElement.style.width = '100%';
+        tldrawElement.style.height = '100%';
+        app.appendChild(tldrawElement);
+        
+        // Create TLDraw instance
+        const tldraw = new Tldraw({
+            element: tldrawElement,
+            onMount: (e) => {
+                editor = e;
+                
+                // Join room
+                socket.emit('join-room', { roomId, token });
+            },
+            onChange: (e) => {
+                if (!editor) return;
+                
+                // Get changes and broadcast
+                const snapshot = getSnapshot(editor.store);
+                socket.emit('document-change', snapshot);
+            }
+        });
+        
+        // Socket event handlers
+        socket.on('document', (document) => {
+            if (editor && document) {
+                loadSnapshot(editor.store, document);
+            }
+        });
+        
+        socket.on('document-change', ({ changes, userId }) => {
+            if (editor && changes) {
+                // Apply changes from other users
+                loadSnapshot(editor.store, changes);
+            }
+        });
+        
+        socket.on('user-joined', ({ userId }) => {
+            console.log('User joined:', userId);
+        });
+        
+        socket.on('user-left', ({ userId }) => {
+            console.log('User left:', userId);
+        });
+        
+        socket.on('auth-error', () => {
+            window.location.href = '/auth/error';
+        });
+        
+        function getCookie(name) {
+            const value = `; ${document.cookie}`;
+            const parts = value.split(`; ${name}=`);
+            if (parts.length === 2) return parts.pop().split(';').shift();
+        }
+    </script>
+</body>
+</html>

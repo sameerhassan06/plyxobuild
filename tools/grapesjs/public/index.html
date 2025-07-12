@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DesignHub - Site Builder</title>
+    <link rel="stylesheet" href="https://unpkg.com/grapesjs/dist/css/grapes.min.css">
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+        }
+        #gjs {
+            height: 100vh;
+        }
+        .panel__top {
+            padding: 0;
+            width: 100%;
+            display: flex;
+            position: initial;
+            justify-content: center;
+            background-color: #1a1a1a;
+        }
+        .panel__basic-actions {
+            position: initial;
+        }
+        .editor-row {
+            display: flex;
+            justify-content: flex-start;
+            align-items: stretch;
+            flex-wrap: nowrap;
+            height: calc(100vh - 40px);
+        }
+        .editor-canvas {
+            flex-grow: 1;
+        }
+        .panel__right {
+            flex-basis: 230px;
+            position: relative;
+            overflow-y: auto;
+            background-color: #2a2a2a;
+        }
+        .panel__switcher {
+            position: initial;
+        }
+        .gjs-logo {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="panel__top">
+        <div class="panel__basic-actions"></div>
+        <div class="panel__switcher"></div>
+    </div>
+    <div class="editor-row">
+        <div class="editor-canvas">
+            <div id="gjs"></div>
+        </div>
+        <div class="panel__right">
+            <div class="layers-container"></div>
+            <div class="styles-container"></div>
+            <div class="traits-container"></div>
+            <div class="blocks-container"></div>
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/grapesjs"></script>
+    <script src="https://unpkg.com/grapesjs-preset-webpage"></script>
+    <script src="https://unpkg.com/grapesjs-blocks-basic"></script>
+    <script src="https://unpkg.com/grapesjs-plugin-forms"></script>
+    <script src="https://unpkg.com/grapesjs-component-countdown"></script>
+    <script src="https://unpkg.com/grapesjs-style-gradient"></script>
+    
+    <script>
+        // Initialize GrapesJS
+        const editor = grapesjs.init({
+            container: '#gjs',
+            height: '100%',
+            width: 'auto',
+            plugins: [
+                'gjs-preset-webpage',
+                'gjs-blocks-basic',
+                'gjs-plugin-forms',
+                'gjs-component-countdown',
+                'gjs-style-gradient'
+            ],
+            pluginsOpts: {
+                'gjs-preset-webpage': {
+                    modalImportTitle: 'Import Template',
+                    modalImportButton: 'Import',
+                    importViewerOptions: {},
+                    textCleanCanvas: 'Are you sure you want to clear the canvas?',
+                    customStyleManager: [
+                        {
+                            name: 'General',
+                            open: false,
+                            buildProps: ['float', 'display', 'position', 'top', 'right', 'left', 'bottom']
+                        },
+                        {
+                            name: 'Dimension',
+                            open: false,
+                            buildProps: ['width', 'height', 'max-width', 'min-height', 'margin', 'padding']
+                        },
+                        {
+                            name: 'Typography',
+                            open: false,
+                            buildProps: ['font-family', 'font-size', 'font-weight', 'letter-spacing', 'color', 'line-height', 'text-align', 'text-decoration', 'text-shadow']
+                        },
+                        {
+                            name: 'Decorations',
+                            open: false,
+                            buildProps: ['background', 'border-radius', 'border', 'box-shadow']
+                        },
+                        {
+                            name: 'Extra',
+                            open: false,
+                            buildProps: ['opacity', 'transition', 'transform', 'filter']
+                        }
+                    ]
+                }
+            },
+            canvas: {
+                styles: [
+                    'https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css'
+                ],
+                scripts: [
+                    'https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js'
+                ]
+            },
+            storageManager: {
+                type: 'remote',
+                autosave: true,
+                autoload: true,
+                stepsBeforeSave: 1,
+                urlStore: '/api/save',
+                urlLoad: '/api/load',
+                params: {},
+                headers: {}
+            },
+            panels: {
+                defaults: [
+                    {
+                        id: 'layers',
+                        el: '.panel__right',
+                        resizable: {
+                            maxDim: 350,
+                            minDim: 200,
+                            tc: 0,
+                            cl: 1,
+                            cr: 0,
+                            bc: 0,
+                            keyWidth: 'flex-basis',
+                        }
+                    },
+                    {
+                        id: 'panel-switcher',
+                        el: '.panel__switcher',
+                        buttons: [
+                            {
+                                id: 'show-layers',
+                                active: true,
+                                label: 'Layers',
+                                command: 'show-layers',
+                                togglable: false
+                            },
+                            {
+                                id: 'show-style',
+                                active: true,
+                                label: 'Styles',
+                                command: 'show-styles',
+                                togglable: false
+                            },
+                            {
+                                id: 'show-traits',
+                                active: true,
+                                label: 'Traits',
+                                command: 'show-traits',
+                                togglable: false
+                            },
+                            {
+                                id: 'show-blocks',
+                                active: true,
+                                label: 'Blocks',
+                                command: 'show-blocks',
+                                togglable: false
+                            }
+                        ]
+                    },
+                    {
+                        id: 'panel-devices',
+                        el: '.panel__devices',
+                        buttons: [
+                            {
+                                id: 'device-desktop',
+                                label: 'Desktop',
+                                command: 'set-device-desktop',
+                                active: true,
+                                togglable: false
+                            },
+                            {
+                                id: 'device-tablet',
+                                label: 'Tablet',
+                                command: 'set-device-tablet',
+                                togglable: false
+                            },
+                            {
+                                id: 'device-mobile',
+                                label: 'Mobile',
+                                command: 'set-device-mobile',
+                                togglable: false
+                            }
+                        ]
+                    }
+                ]
+            },
+            deviceManager: {
+                devices: [
+                    {
+                        name: 'Desktop',
+                        width: ''
+                    },
+                    {
+                        name: 'Tablet',
+                        width: '768px',
+                        widthMedia: '992px'
+                    },
+                    {
+                        name: 'Mobile',
+                        width: '320px',
+                        widthMedia: '480px'
+                    }
+                ]
+            },
+            assetManager: {
+                upload: '/api/upload',
+                uploadName: 'files',
+                multiUpload: true,
+                assets: []
+            },
+            styleManager: {
+                appendTo: '.styles-container',
+                clearProperties: 1
+            },
+            layerManager: {
+                appendTo: '.layers-container'
+            },
+            traitManager: {
+                appendTo: '.traits-container'
+            },
+            blockManager: {
+                appendTo: '.blocks-container'
+            }
+        });
+        
+        // Commands
+        editor.Commands.add('set-device-desktop', {
+            run: editor => editor.setDevice('Desktop')
+        });
+        editor.Commands.add('set-device-tablet', {
+            run: editor => editor.setDevice('Tablet')
+        });
+        editor.Commands.add('set-device-mobile', {
+            run: editor => editor.setDevice('Mobile')
+        });
+        
+        editor.Commands.add('show-layers', {
+            getLayersEl() { return document.querySelector('.layers-container') },
+            run(editor) {
+                this.getLayersEl().style.display = '';
+            },
+            stop() {
+                this.getLayersEl().style.display = 'none';
+            },
+            isActive() {
+                return this.getLayersEl().style.display === '';
+            }
+        });
+        
+        editor.Commands.add('show-styles', {
+            getStylesEl() { return document.querySelector('.styles-container') },
+            run(editor) {
+                this.getStylesEl().style.display = '';
+            },
+            stop() {
+                this.getStylesEl().style.display = 'none';
+            },
+            isActive() {
+                return this.getStylesEl().style.display === '';
+            }
+        });
+        
+        editor.Commands.add('show-traits', {
+            getTraitsEl() { return document.querySelector('.traits-container') },
+            run(editor) {
+                this.getTraitsEl().style.display = '';
+            },
+            stop() {
+                this.getTraitsEl().style.display = 'none';
+            },
+            isActive() {
+                return this.getTraitsEl().style.display === '';
+            }
+        });
+        
+        editor.Commands.add('show-blocks', {
+            getBlocksEl() { return document.querySelector('.blocks-container') },
+            run(editor) {
+                this.getBlocksEl().style.display = '';
+            },
+            stop() {
+                this.getBlocksEl().style.display = 'none';
+            },
+            isActive() {
+                return this.getBlocksEl().style.display === '';
+            }
+        });
+        
+        // Show layers by default
+        editor.runCommand('show-layers');
+    </script>
+</body>
+</html>

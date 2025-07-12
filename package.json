@@ -1,0 +1,10 @@
+{
+  "name": "designhub-platform",
+  "version": "1.0.0",
+  "description": "All-in-one design platform",
+  "scripts": {
+    "docker:up": "docker-compose up -d",
+    "docker:down": "docker-compose down",
+    "docker:build": "docker-compose build"
+  }
+}

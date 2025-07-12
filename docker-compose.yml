@@ -1,0 +1,186 @@
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_DB: designhub
+      POSTGRES_USER: designhub_user
+      POSTGRES_PASSWORD: designhub_pass
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    networks:
+      - designhub_network
+
+  # Redis for caching and real-time data
+  redis:
+    image: redis:7-alpine
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    networks:
+      - designhub_network
+
+  # Penpot backend
+  penpot-backend:
+    image: penpotapp/backend:latest
+    environment:
+      PENPOT_DATABASE_URI: postgresql://designhub_user:designhub_pass@postgres/designhub
+      PENPOT_REDIS_URI: redis://redis:6379
+      PENPOT_PUBLIC_URI: http://localhost:9001
+      PENPOT_SECRET_KEY: your-secret-key-here
+      PENPOT_TELEMETRY_ENABLED: false
+      # SSO Configuration for our platform
+      PENPOT_AUTH_PROVIDERS: "sso"
+      PENPOT_SSO_AUTH_URL: http://main-app:3001/api/auth/sso/penpot
+      PENPOT_SSO_TOKEN_URL: http://main-app:3001/api/auth/sso/token
+      PENPOT_SSO_USER_URL: http://main-app:3001/api/auth/sso/user
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - designhub_network
+    volumes:
+      - penpot_data:/opt/penpot
+
+  # Penpot frontend
+  penpot-frontend:
+    image: penpotapp/frontend:latest
+    environment:
+      PENPOT_FLAGS: "enable-registration disable-demo-warning"
+    ports:
+      - "9001:80"
+    depends_on:
+      - penpot-backend
+    networks:
+      - designhub_network
+
+  # Main application (our custom platform)
+  main-app:
+    build: 
+      context: ./backend
+      dockerfile: Dockerfile
+    environment:
+      NODE_ENV: development
+      DATABASE_URL: postgresql://designhub_user:designhub_pass@postgres/designhub
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: your-jwt-secret-here
+      SSO_SECRET: your-sso-secret-here
+      SESSION_SECRET: your-session-secret-here
+      PENPOT_URL: http://penpot-frontend
+      PORT: 3001
+    ports:
+      - "3001:3001"
+    depends_on:
+      - postgres
+      - redis
+    volumes:
+      - ./backend:/app
+      - /app/node_modules
+    networks:
+      - designhub_network
+    command: npm run dev
+
+  # Frontend (React/Vue app)
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    environment:
+      REACT_APP_API_URL: http://localhost:3001
+      REACT_APP_WS_URL: ws://localhost:3001
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    networks:
+      - designhub_network
+    command: npm start
+
+  # TLDraw service
+  tldraw:
+    build:
+      context: ./tools/tldraw
+      dockerfile: Dockerfile
+    environment:
+      TLDRAW_API_URL: http://main-app:3001
+      TLDRAW_WS_URL: ws://main-app:3001
+    ports:
+      - "3002:3002"
+    networks:
+      - designhub_network
+    volumes:
+      - ./tools/tldraw:/app
+      - /app/node_modules
+
+  # GrapesJS service
+  grapesjs:
+    build:
+      context: ./tools/grapesjs
+      dockerfile: Dockerfile
+    environment:
+      GRAPESJS_API_URL: http://main-app:3001
+    ports:
+      - "3003:3003"
+    networks:
+      - designhub_network
+    volumes:
+      - ./tools/grapesjs:/app
+      - /app/node_modules
+
+  # MinIO for object storage (assets, exports)
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9090"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    ports:
+      - "9000:9000"
+      - "9090:9090"
+    volumes:
+      - minio_data:/data
+    networks:
+      - designhub_network
+
+  # Nginx reverse proxy
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - main-app
+      - frontend
+      - penpot-frontend
+      - tldraw
+      - grapesjs
+    networks:
+      - designhub_network
+
+  # Adminer for database management
+  adminer:
+    image: adminer:latest
+    ports:
+      - "8080:8080"
+    environment:
+      ADMINER_DEFAULT_SERVER: postgres
+    networks:
+      - designhub_network
+
+networks:
+  designhub_network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:
+  penpot_data:
+  minio_data:

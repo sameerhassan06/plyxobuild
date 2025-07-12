@@ -1,0 +1,867 @@
+const express = require('express');
+const { createServer } = require('http');
+const { Server } = require('socket.io');
+const session = require('express-session');
+const passport = require('passport');
+const LocalStrategy = require('passport-local').Strategy;
+const JwtStrategy = require('passport-jwt').Strategy;
+const cors = require('cors');
+const bcrypt = require('bcrypt');
+const jwt = require('jsonwebtoken');
+const { Pool } = require('pg');
+const Redis = require('redis');
+const path = require('path');
+
+const app = express();
+const httpServer = createServer(app);
+const io = new Server(httpServer, {
+  cors: {
+    origin: process.env.CLIENT_URL || 'http://localhost:3000',
+    credentials: true
+  }
+});
+
+// Database setup
+const pgPool = new Pool({
+  connectionString: process.env.DATABASE_URL || 'postgresql://localhost/designhub'
+});
+
+const redisClient = Redis.createClient({
+  url: process.env.REDIS_URL || 'redis://localhost:6379'
+});
+
+// Middleware
+app.use(cors({ credentials: true, origin: true }));
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+app.use(session({
+  secret: process.env.SESSION_SECRET || 'your-secret-key',
+  resave: false,
+  saveUninitialized: false,
+  cookie: { secure: process.env.NODE_ENV === 'production' }
+}));
+app.use(passport.initialize());
+app.use(passport.session());
+
+// =====================================================
+// AUTHENTICATION & SSO SETUP
+// =====================================================
+
+class AuthService {
+  constructor(db, redis) {
+    this.db = db;
+    this.redis = redis;
+    this.setupPassport();
+  }
+
+  setupPassport() {
+    // Local strategy
+    passport.use(new LocalStrategy(
+      { usernameField: 'email' },
+      async (email, password, done) => {
+        try {
+          const result = await this.db.query(
+            'SELECT * FROM users WHERE email = $1',
+            [email]
+          );
+          
+          const user = result.rows[0];
+          if (!user) {
+            return done(null, false, { message: 'User not found' });
+          }
+          
+          const validPassword = await bcrypt.compare(password, user.password);
+          if (!validPassword) {
+            return done(null, false, { message: 'Invalid password' });
+          }
+          
+          return done(null, user);
+        } catch (err) {
+          return done(err);
+        }
+      }
+    ));
+
+    // JWT strategy
+    passport.use(new JwtStrategy({
+      jwtFromRequest: (req) => req.cookies?.jwt || req.headers.authorization?.split(' ')[1],
+      secretOrKey: process.env.JWT_SECRET || 'your-jwt-secret'
+    }, async (payload, done) => {
+      try {
+        const result = await this.db.query(
+          'SELECT * FROM users WHERE id = $1',
+          [payload.userId]
+        );
+        
+        const user = result.rows[0];
+        if (user) {
+          return done(null, user);
+        }
+        return done(null, false);
+      } catch (err) {
+        return done(err, false);
+      }
+    }));
+
+    passport.serializeUser((user, done) => {
+      done(null, user.id);
+    });
+
+    passport.deserializeUser(async (id, done) => {
+      try {
+        const result = await this.db.query(
+          'SELECT * FROM users WHERE id = $1',
+          [id]
+        );
+        done(null, result.rows[0]);
+      } catch (err) {
+        done(err);
+      }
+    });
+  }
+
+  async createUser(userData) {
+    const { email, password, name } = userData;
+    const hashedPassword = await bcrypt.hash(password, 10);
+    
+    const result = await this.db.query(
+      'INSERT INTO users (email, password, name, created_at) VALUES ($1, $2, $3, $4) RETURNING *',
+      [email, hashedPassword, name, new Date()]
+    );
+    
+    return result.rows[0];
+  }
+
+  generateToken(user) {
+    return jwt.sign(
+      { userId: user.id, email: user.email },
+      process.env.JWT_SECRET || 'your-jwt-secret',
+      { expiresIn: '7d' }
+    );
+  }
+
+  async generateSSOToken(userId, service) {
+    const token = jwt.sign(
+      { userId, service, timestamp: Date.now() },
+      process.env.SSO_SECRET || 'your-sso-secret',
+      { expiresIn: '1h' }
+    );
+    
+    // Store in Redis for validation
+    await this.redis.setex(`sso:${token}`, 3600, JSON.stringify({ userId, service }));
+    
+    return token;
+  }
+}
+
+// =====================================================
+// TOOL INTEGRATIONS
+// =====================================================
+
+class ToolIntegrationService {
+  constructor(authService, db) {
+    this.authService = authService;
+    this.db = db;
+    this.tools = {
+      penpot: new PenpotIntegration(),
+      tldraw: new TldrawIntegration(),
+      grapesjs: new GrapesjsIntegration(),
+      wordpress: new WordPressIntegration()
+    };
+  }
+
+  async launchTool(userId, toolName, projectId) {
+    // Generate SSO token for the tool
+    const ssoToken = await this.authService.generateSSOToken(userId, toolName);
+    
+    // Get tool integration
+    const tool = this.tools[toolName];
+    if (!tool) {
+      throw new Error('Tool not found');
+    }
+    
+    // Create tool session
+    const session = await tool.createSession(userId, projectId, ssoToken);
+    
+    // Log tool usage
+    await this.db.query(
+      'INSERT INTO tool_usage (user_id, tool_name, project_id, started_at) VALUES ($1, $2, $3, $4)',
+      [userId, toolName, projectId, new Date()]
+    );
+    
+    return session;
+  }
+}
+
+// Penpot Integration
+class PenpotIntegration {
+  constructor() {
+    this.baseUrl = process.env.PENPOT_URL || 'http://localhost:9001';
+  }
+
+  async createSession(userId, projectId, ssoToken) {
+    // Create Penpot session with SSO
+    const penpotSession = {
+      url: `${this.baseUrl}/auth/sso?token=${ssoToken}&project=${projectId}`,
+      embedUrl: `${this.baseUrl}/embed?token=${ssoToken}&project=${projectId}`,
+      wsUrl: `ws://localhost:9001/ws?token=${ssoToken}`
+    };
+    
+    return penpotSession;
+  }
+
+  async exportProject(projectId, format) {
+    // Export Penpot project to various formats
+    const exportUrl = `${this.baseUrl}/api/export/${projectId}?format=${format}`;
+    return { exportUrl };
+  }
+}
+
+// TLDraw Integration
+class TldrawIntegration {
+  constructor() {
+    this.rooms = new Map();
+  }
+
+  async createSession(userId, projectId, ssoToken) {
+    const roomId = `whiteboard-${projectId}`;
+    
+    // Create or get TLDraw room
+    if (!this.rooms.has(roomId)) {
+      this.rooms.set(roomId, {
+        id: roomId,
+        users: new Set(),
+        state: {}
+      });
+    }
+    
+    const room = this.rooms.get(roomId);
+    room.users.add(userId);
+    
+    return {
+      roomId,
+      wsUrl: `/ws/tldraw?room=${roomId}&token=${ssoToken}`,
+      embedUrl: `/tools/tldraw?room=${roomId}&token=${ssoToken}`
+    };
+  }
+
+  handleWebSocket(ws, roomId, userId) {
+    const room = this.rooms.get(roomId);
+    if (!room) return;
+    
+    // Handle TLDraw real-time collaboration
+    ws.on('message', (data) => {
+      const message = JSON.parse(data);
+      
+      switch (message.type) {
+        case 'shapes':
+          room.state = { ...room.state, shapes: message.shapes };
+          // Broadcast to other users
+          this.broadcastToRoom(roomId, userId, message);
+          break;
+        case 'cursor':
+          this.broadcastToRoom(roomId, userId, message);
+          break;
+      }
+    });
+  }
+
+  broadcastToRoom(roomId, senderId, message) {
+    // Broadcast to all users in the room except sender
+    const room = this.rooms.get(roomId);
+    room.users.forEach(userId => {
+      if (userId !== senderId) {
+        // Send through WebSocket to user
+        io.to(`user-${userId}`).emit('tldraw-update', message);
+      }
+    });
+  }
+}
+
+// GrapesJS Integration  
+class GrapesjsIntegration {
+  constructor() {
+    this.projects = new Map();
+  }
+
+  async createSession(userId, projectId, ssoToken) {
+    return {
+      embedUrl: `/tools/grapesjs?project=${projectId}&token=${ssoToken}`,
+      apiUrl: `/api/grapesjs/${projectId}`
+    };
+  }
+
+  async saveProject(projectId, data) {
+    // Save GrapesJS project data
+    await pgPool.query(
+      'INSERT INTO grapesjs_projects (project_id, data, updated_at) VALUES ($1, $2, $3) ON CONFLICT (project_id) DO UPDATE SET data = $2, updated_at = $3',
+      [projectId, JSON.stringify(data), new Date()]
+    );
+  }
+
+  async loadProject(projectId) {
+    const result = await pgPool.query(
+      'SELECT data FROM grapesjs_projects WHERE project_id = $1',
+      [projectId]
+    );
+    
+    return result.rows[0]?.data || null;
+  }
+
+  async exportHTML(projectId) {
+    const projectData = await this.loadProject(projectId);
+    if (!projectData) return null;
+    
+    // Generate static HTML/CSS/JS
+    return {
+      html: projectData.html,
+      css: projectData.css,
+      js: projectData.js
+    };
+  }
+}
+
+// WordPress Integration
+class WordPressIntegration {
+  constructor() {
+    this.themeGenerator = new WordPressThemeGenerator();
+  }
+
+  async generateTheme(projectData, options) {
+    // Convert design to WordPress theme
+    const theme = await this.themeGenerator.generate(projectData, options);
+    
+    // Save theme files
+    const themeId = await this.saveTheme(theme);
+    
+    return {
+      themeId,
+      downloadUrl: `/api/wordpress/download/${themeId}`,
+      preview: `/api/wordpress/preview/${themeId}`
+    };
+  }
+
+  async saveTheme(theme) {
+    const result = await pgPool.query(
+      'INSERT INTO wordpress_themes (name, files, created_at) VALUES ($1, $2, $3) RETURNING id',
+      [theme.name, JSON.stringify(theme.files), new Date()]
+    );
+    
+    return result.rows[0].id;
+  }
+}
+
+class WordPressThemeGenerator {
+  generate(projectData, options) {
+    const theme = {
+      name: options.themeName || 'Generated Theme',
+      version: '1.0.0',
+      files: {}
+    };
+
+    // Generate theme files
+    theme.files['style.css'] = this.generateStylesheet(theme, projectData);
+    theme.files['functions.php'] = this.generateFunctions(theme, projectData);
+    theme.files['index.php'] = this.generateIndex(projectData);
+    theme.files['header.php'] = this.generateHeader(projectData);
+    theme.files['footer.php'] = this.generateFooter(projectData);
+    
+    // Generate templates for each page
+    if (projectData.pages) {
+      projectData.pages.forEach(page => {
+        theme.files[`page-${page.slug}.php`] = this.generatePageTemplate(page);
+      });
+    }
+
+    return theme;
+  }
+
+  generateStylesheet(theme, projectData) {
+    return `/*
+Theme Name: ${theme.name}
+Version: ${theme.version}
+Description: Auto-generated WordPress theme
+*/
+
+/* Global Styles */
+:root {
+  --primary-color: ${projectData.colors?.primary || '#6366f1'};
+  --secondary-color: ${projectData.colors?.secondary || '#8b5cf6'};
+  --text-color: ${projectData.colors?.text || '#333'};
+  --bg-color: ${projectData.colors?.background || '#fff'};
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  color: var(--text-color);
+  background-color: var(--bg-color);
+  line-height: 1.6;
+}
+
+/* Container */
+.container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 20px;
+}
+
+/* Header */
+.site-header {
+  background: var(--primary-color);
+  padding: 1rem 0;
+}
+
+.site-nav ul {
+  list-style: none;
+  display: flex;
+  gap: 2rem;
+}
+
+.site-nav a {
+  color: white;
+  text-decoration: none;
+}
+
+/* Main Content */
+.site-main {
+  padding: 3rem 0;
+  min-height: 60vh;
+}
+
+/* Footer */
+.site-footer {
+  background: #f5f5f5;
+  padding: 2rem 0;
+  margin-top: 3rem;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .site-nav ul {
+    flex-direction: column;
+    gap: 1rem;
+  }
+}`;
+  }
+
+  generateFunctions(theme, projectData) {
+    return `<?php
+/**
+ * ${theme.name} functions and definitions
+ */
+
+// Theme setup
+function theme_setup() {
+    // Add theme support
+    add_theme_support('post-thumbnails');
+    add_theme_support('automatic-feed-links');
+    add_theme_support('title-tag');
+    add_theme_support('custom-logo');
+    add_theme_support('html5', array(
+        'search-form',
+        'comment-form',
+        'comment-list',
+        'gallery',
+        'caption',
+    ));
+
+    // Register navigation menus
+    register_nav_menus(array(
+        'primary' => __('Primary Menu', 'theme-textdomain'),
+        'footer' => __('Footer Menu', 'theme-textdomain'),
+    ));
+}
+add_action('after_setup_theme', 'theme_setup');
+
+// Enqueue scripts and styles
+function theme_scripts() {
+    wp_enqueue_style('theme-style', get_stylesheet_uri(), array(), '1.0.0');
+    wp_enqueue_script('theme-script', get_template_directory_uri() . '/assets/js/main.js', array('jquery'), '1.0.0', true);
+}
+add_action('wp_enqueue_scripts', 'theme_scripts');
+
+// Register widget areas
+function theme_widgets_init() {
+    register_sidebar(array(
+        'name' => __('Sidebar', 'theme-textdomain'),
+        'id' => 'sidebar-1',
+        'description' => __('Add widgets here.', 'theme-textdomain'),
+        'before_widget' => '<section id="%1$s" class="widget %2$s">',
+        'after_widget' => '</section>',
+        'before_title' => '<h2 class="widget-title">',
+        'after_title' => '</h2>',
+    ));
+}
+add_action('widgets_init', 'theme_widgets_init');
+?>`;
+  }
+
+  generateIndex(projectData) {
+    return `<?php
+/**
+ * The main template file
+ */
+
+get_header(); ?>
+
+<main id="primary" class="site-main">
+    <div class="container">
+        <?php
+        if (have_posts()) :
+            while (have_posts()) :
+                the_post();
+                ?>
+                <article id="post-<?php the_ID(); ?>" <?php post_class(); ?>>
+                    <header class="entry-header">
+                        <?php the_title('<h1 class="entry-title">', '</h1>'); ?>
+                    </header>
+
+                    <div class="entry-content">
+                        <?php the_content(); ?>
+                    </div>
+                </article>
+                <?php
+            endwhile;
+
+            the_posts_navigation();
+        else :
+            ?>
+            <p><?php esc_html_e('Sorry, no posts matched your criteria.', 'theme-textdomain'); ?></p>
+            <?php
+        endif;
+        ?>
+    </div>
+</main>
+
+<?php
+get_sidebar();
+get_footer();`;
+  }
+
+  generateHeader(projectData) {
+    return `<?php
+/**
+ * The header template
+ */
+?><!doctype html>
+<html <?php language_attributes(); ?>>
+<head>
+    <meta charset="<?php bloginfo('charset'); ?>">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="profile" href="https://gmpg.org/xfn/11">
+    <?php wp_head(); ?>
+</head>
+
+<body <?php body_class(); ?>>
+<?php wp_body_open(); ?>
+
+<div id="page" class="site">
+    <header id="masthead" class="site-header">
+        <div class="container">
+            <div class="site-branding">
+                <?php
+                if (has_custom_logo()) :
+                    the_custom_logo();
+                else :
+                    ?>
+                    <h1 class="site-title">
+                        <a href="<?php echo esc_url(home_url('/')); ?>" rel="home">
+                            <?php bloginfo('name'); ?>
+                        </a>
+                    </h1>
+                    <?php
+                endif;
+                ?>
+            </div>
+
+            <nav id="site-navigation" class="site-nav">
+                <?php
+                wp_nav_menu(array(
+                    'theme_location' => 'primary',
+                    'menu_id' => 'primary-menu',
+                ));
+                ?>
+            </nav>
+        </div>
+    </header>`;
+  }
+
+  generateFooter(projectData) {
+    return `<?php
+/**
+ * The template for displaying the footer
+ */
+?>
+
+    <footer id="colophon" class="site-footer">
+        <div class="container">
+            <div class="site-info">
+                <p>&copy; <?php echo date('Y'); ?> <?php bloginfo('name'); ?>. All rights reserved.</p>
+            </div>
+        </div>
+    </footer>
+</div><!-- #page -->
+
+<?php wp_footer(); ?>
+
+</body>
+</html>`;
+  }
+
+  generatePageTemplate(page) {
+    return `<?php
+/**
+ * Template Name: ${page.title}
+ */
+
+get_header(); ?>
+
+<main id="primary" class="site-main">
+    <div class="container">
+        <?php
+        while (have_posts()) :
+            the_post();
+            ?>
+            <article id="post-<?php the_ID(); ?>" <?php post_class(); ?>>
+                <header class="entry-header">
+                    <?php the_title('<h1 class="entry-title">', '</h1>'); ?>
+                </header>
+
+                <div class="entry-content">
+                    <?php the_content(); ?>
+                </div>
+            </article>
+            <?php
+        endwhile;
+        ?>
+    </div>
+</main>
+
+<?php
+get_footer();`;
+  }
+}
+
+// =====================================================
+// API ROUTES
+// =====================================================
+
+const authService = new AuthService(pgPool, redisClient);
+const toolService = new ToolIntegrationService(authService, pgPool);
+
+// Authentication routes
+app.post('/api/auth/register', async (req, res) => {
+  try {
+    const user = await authService.createUser(req.body);
+    const token = authService.generateToken(user);
+    
+    res.cookie('jwt', token, { httpOnly: true, secure: process.env.NODE_ENV === 'production' });
+    res.json({ user: { id: user.id, email: user.email, name: user.name }, token });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.post('/api/auth/login', passport.authenticate('local'), (req, res) => {
+  const token = authService.generateToken(req.user);
+  res.cookie('jwt', token, { httpOnly: true, secure: process.env.NODE_ENV === 'production' });
+  res.json({ user: req.user, token });
+});
+
+app.post('/api/auth/logout', (req, res) => {
+  req.logout();
+  res.clearCookie('jwt');
+  res.json({ message: 'Logged out successfully' });
+});
+
+// Tool launching routes
+app.post('/api/tools/launch', passport.authenticate('jwt', { session: false }), async (req, res) => {
+  try {
+    const { toolName, projectId } = req.body;
+    const session = await toolService.launchTool(req.user.id, toolName, projectId);
+    res.json(session);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// Project routes
+app.get('/api/projects', passport.authenticate('jwt', { session: false }), async (req, res) => {
+  try {
+    const result = await pgPool.query(
+      'SELECT * FROM projects WHERE user_id = $1 OR $1 = ANY(team_members) ORDER BY updated_at DESC',
+      [req.user.id]
+    );
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/projects', passport.authenticate('jwt', { session: false }), async (req, res) => {
+  try {
+    const { name, tools } = req.body;
+    const result = await pgPool.query(
+      'INSERT INTO projects (name, user_id, tools, created_at, updated_at) VALUES ($1, $2, $3, $4, $4) RETURNING *',
+      [name, req.user.id, tools, new Date()]
+    );
+    res.json(result.rows[0]);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// GrapesJS API
+app.post('/api/grapesjs/:projectId/save', passport.authenticate('jwt', { session: false }), async (req, res) => {
+  try {
+    await toolService.tools.grapesjs.saveProject(req.params.projectId, req.body);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/grapesjs/:projectId/load', passport.authenticate('jwt', { session: false }), async (req, res) => {
+  try {
+    const data = await toolService.tools.grapesjs.loadProject(req.params.projectId);
+    res.json(data || {});
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// WordPress Export
+app.post('/api/wordpress/generate', passport.authenticate('jwt', { session: false }), async (req, res) => {
+  try {
+    const { projectId, options } = req.body;
+    
+    // Get project data
+    const projectResult = await pgPool.query(
+      'SELECT * FROM projects WHERE id = $1 AND (user_id = $2 OR $2 = ANY(team_members))',
+      [projectId, req.user.id]
+    );
+    
+    if (!projectResult.rows[0]) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+    
+    const theme = await toolService.tools.wordpress.generateTheme(req.body.projectData, options);
+    res.json(theme);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Admin routes
+app.get('/api/admin/stats', passport.authenticate('jwt', { session: false }), async (req, res) => {
+  // Check if user is admin
+  if (!req.user.is_admin) {
+    return res.status(403).json({ error: 'Unauthorized' });
+  }
+  
+  try {
+    const stats = await pgPool.query(`
+      SELECT 
+        (SELECT COUNT(*) FROM users) as total_users,
+        (SELECT COUNT(*) FROM projects) as total_projects,
+        (SELECT COUNT(*) FROM users WHERE created_at > NOW() - INTERVAL '30 days') as new_users_30d,
+        (SELECT COUNT(*) FROM projects WHERE created_at > NOW() - INTERVAL '30 days') as new_projects_30d
+    `);
+    
+    res.json(stats.rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// WebSocket handling
+io.on('connection', (socket) => {
+  socket.on('authenticate', async (token) => {
+    try {
+      const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-jwt-secret');
+      socket.userId = decoded.userId;
+      socket.join(`user-${decoded.userId}`);
+      socket.emit('authenticated');
+    } catch (err) {
+      socket.emit('auth-error');
+      socket.disconnect();
+    }
+  });
+  
+  // TLDraw collaboration
+  socket.on('tldraw-join', async (data) => {
+    const { roomId, token } = data;
+    // Verify token and join room
+    socket.join(`tldraw-${roomId}`);
+    toolService.tools.tldraw.handleWebSocket(socket, roomId, socket.userId);
+  });
+});
+
+// Static files for tools
+app.use('/tools/tldraw', express.static(path.join(__dirname, '../tools/tldraw')));
+app.use('/tools/grapesjs', express.static(path.join(__dirname, '../tools/grapesjs')));
+
+// Start server
+const PORT = process.env.PORT || 3001;
+httpServer.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+});
+
+// Database schema
+const createTables = async () => {
+  await pgPool.query(`
+    CREATE TABLE IF NOT EXISTS users (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      email VARCHAR(255) UNIQUE NOT NULL,
+      password VARCHAR(255) NOT NULL,
+      name VARCHAR(255),
+      is_admin BOOLEAN DEFAULT false,
+      subscription_tier VARCHAR(50) DEFAULT 'free',
+      created_at TIMESTAMP DEFAULT NOW(),
+      updated_at TIMESTAMP DEFAULT NOW()
+    );
+    
+    CREATE TABLE IF NOT EXISTS projects (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      name VARCHAR(255) NOT NULL,
+      user_id UUID REFERENCES users(id),
+      team_members UUID[],
+      tools TEXT[],
+      created_at TIMESTAMP DEFAULT NOW(),
+      updated_at TIMESTAMP DEFAULT NOW()
+    );
+    
+    CREATE TABLE IF NOT EXISTS tool_usage (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      user_id UUID REFERENCES users(id),
+      tool_name VARCHAR(50),
+      project_id UUID REFERENCES projects(id),
+      started_at TIMESTAMP DEFAULT NOW(),
+      ended_at TIMESTAMP
+    );
+    
+    CREATE TABLE IF NOT EXISTS grapesjs_projects (
+      project_id UUID PRIMARY KEY REFERENCES projects(id),
+      data JSONB,
+      updated_at TIMESTAMP DEFAULT NOW()
+    );
+    
+    CREATE TABLE IF NOT EXISTS wordpress_themes (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      name VARCHAR(255),
+      files JSONB,
+      created_at TIMESTAMP DEFAULT NOW()
+    );
+  `);
+};
+
+// Initialize database
+createTables().catch(console.error);
+
+module.exports = { app, io };
